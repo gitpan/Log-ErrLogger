@@ -8,7 +8,7 @@
 
 BEGIN { $| = 1; print "1..12\n"; }
 END {print "not ok 1\n" unless $loaded;}
-use Log::ErrLogger qw{LogError};
+use Log::ErrLogger qw{log_error};
 $loaded = 1;
 print "ok 1\n";
 
@@ -39,10 +39,10 @@ if (!pipe(*IN, *OUT)) {
 	printf "ok %d\n", ++$cnt;
 	my $handle = new IO::Handle;
 	$handle->fdopen(fileno(OUT), "w");
-	$logger->SetFileHandle($handle);
+	$logger->set_file_handle($handle);
 
-	LogError( Log::ErrLogger::ERROR,   "X");
-	LogError( Log::ErrLogger::WARNING, "Y");
+	log_error( Log::ErrLogger::ERROR,   "X");
+	log_error( Log::ErrLogger::WARNING, "Y");
 
 	$logger->close;
 	close(OUT);
@@ -64,8 +64,8 @@ if (!($logger = new Log::ErrLogger::File( SENSITIVITY => Log::ErrLogger::WARNING
   }
 } else {
   printf "ok %d\n", ++$cnt;
-  LogError( Log::ErrLogger::INFORMATIONAL, "X");
-  LogError( Log::ErrLogger::ERROR,         "Y");
+  log_error( Log::ErrLogger::INFORMATIONAL, "X");
+  log_error( Log::ErrLogger::ERROR,         "Y");
   $logger->close;
 
   if (!open(IN, "/tmp/$$.tmp")) {
@@ -92,15 +92,15 @@ if (!($logger = new Log::ErrLogger::Sub( SENSITIVITY => Log::ErrLogger::WARNING,
   }
 } else {
   printf "ok %d\n", ++$cnt;
-  LogError( Log::ErrLogger::DEBUGGING, "Test" );
+  log_error( Log::ErrLogger::DEBUGGING, "Test" );
   printf "%sok %d\n", ($x==0)?"":"not ", ++$cnt;
-  LogError( Log::ErrLogger::ERROR, "Test" );
+  log_error( Log::ErrLogger::ERROR, "Test" );
   printf "%sok %d\n", ($x==1)?"":"not ", ++$cnt;
 }
 
 #### Test Log::ErrLogger::Tie   ####
 
-Log::ErrLogger::Tie(Log::ErrLogger::ERROR)->close;
+Log::ErrLogger::tie(Log::ErrLogger::ERROR)->close;
 
 $x=0;
 print STDERR "X";

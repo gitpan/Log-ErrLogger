@@ -30,13 +30,13 @@ Log::ErrLogger - Log errors and error-like events
 						 exit(0); } );
 
   # Capture all output to STDERR as an UNEXPECTED error
-  my $stderr_logger = Log::ErrLogger::Tie( Log::ErrLogger::UNEXPECTED );
+  my $stderr_logger = Log::ErrLogger::tie( Log::ErrLogger::UNEXPECTED );
 
   # But don't actually print to STDERR
   $stderr_logger->close;
 
   # Log a warning
-  LogError( WARNING, "Danger, %s!", "Will Robinson" );
+  log_error( WARNING, "Danger, %s!", "Will Robinson" );
 
 =head1 DESCRIPTION
 
@@ -50,13 +50,19 @@ least as severe as their sensitivity, and will ignore any events that are less
 severe.
 
 This module instantiates new __DIE__ and __WARN__ handlers that call
-LogError( FATAL, die-message) and LogError( WARNING, warn-message), respectively.
+log_error( FATAL, die-message) and log_error( WARNING, warn-message), respectively.
 
 =head1 HISTORY
 
-$Id: ErrLogger.pm,v 1.4 1999/09/13 16:37:17 dcw Exp $
+$Id: ErrLogger.pm,v 1.6 1999/09/23 21:37:24 dcw Exp $
 
 $Log: ErrLogger.pm,v $
+Revision 1.6  1999/09/23 21:37:24  dcw
+Incorporated Tim Ayers <tayers@bridge.com> suggestions
+
+Revision 1.5  1999/09/13 17:59:48  dcw
+Copyright
+
 Revision 1.4  1999/09/13 16:37:17  dcw
 Documentation
 
@@ -72,6 +78,13 @@ Initial
 =head1 AUTHOR
 
 David C. Worenklein <dcw@gcm.com>
+
+=head1 COPYRIGHT
+
+Copyright 1999 Greenwich Capital Markets
+
+This library is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
 
 =head1 ERROR SEVERITIES
 
@@ -122,9 +135,9 @@ use Exporter;
 use vars qw{ @ISA @EXPORT_OK %EXPORT_TAGS $VERSION };
 
 @ISA         = qw{ Exporter };
-@EXPORT_OK   = (@Errors, "LogError", "Tie");
+@EXPORT_OK   = (@Errors, "log_error", "tie", "LogError", "Tie");
 %EXPORT_TAGS = (ErrorLevels => [@Errors]);
-($VERSION)   = ( qw$Revision: 1.4 $ )[1];
+($VERSION)   = ( qw$Revision: 1.6 $ )[1];
 
 use IO::Handle;
 
@@ -134,16 +147,16 @@ use IO::Handle;
 # Prototypes #
 ##############
 
-sub LogError( $$;@ );
-sub Tie( ;$ );
+sub log_error( $$;@ );
+sub tie( ;$ );
 sub new( $;% );
 
 # Prototypes don't do much for methods, but they make the code more readable.
-sub Sensitivity( $ );
-sub SetSensitivity( $$ );
-sub FileHandle( $ );
-sub SetFileHandle( $$ );
-sub Log( $$$ );
+sub sensitivity( $ );
+sub set_sensitivity( $$ );
+sub file_handle( $ );
+sub set_file_handle( $$ );
+sub log( $$$ );
 sub close( $ );
 
 
@@ -162,8 +175,8 @@ for(my $i=0; $i<scalar(@Errors); $i++) {
 # Commandeer DIE and WARN #
 ###########################
 
-$SIG{__DIE__}  = sub { if (defined($^S)) { Log::ErrLogger::LogError( &Log::ErrLogger::FATAL,   "%s", @_ ); } else { die  @_; } };
-$SIG{__WARN__} = sub { if (defined($^S)) { Log::ErrLogger::LogError( &Log::ErrLogger::WARNING, "%s", @_ ); } else { warn @_; } };
+$SIG{__DIE__}  = sub { if (defined($^S)) { Log::ErrLogger::log_error( &Log::ErrLogger::FATAL,   "%s", @_ ); } else { die  @_; } };
+$SIG{__WARN__} = sub { if (defined($^S)) { Log::ErrLogger::log_error( &Log::ErrLogger::WARNING, "%s", @_ ); } else { warn @_; } };
 
 
 
@@ -181,15 +194,15 @@ my @LogMethods;
 
 =over 4
 
-=item LogError( $severity, $format [,@args] )
+=item log_error( SEVERITY, FORMAT [,LIST] )
 
 Log an error of the specified severity.  The text of the message is the output of
-sprintf $format, @args.  A carriage-return (\n) will be appended if one is not
+sprintf FORMAT, ARGS.  A carriage-return (\n) will be appended if one is not
 supplied.
 
 =cut
 
-sub LogError( $$;@ ) {
+sub log_error( $$;@ ) {
   my ($severity, $format, @args) = @_;
 
   my $message = sprintf $format, @args;
@@ -199,10 +212,10 @@ sub LogError( $$;@ ) {
   my $fatal;
 
   foreach my $logger (@LogMethods) {
-	if ($logger->Sensitivity <= $severity) {
+	if ($logger->sensitivity <= $severity) {
 
 	  # An error logger can attempt to die
-	  eval { $logger->Log( $message, $severity ) };
+	  eval { $logger->log( $severity, $message ) };
 	  $fatal ||= $@;
 	}
   }
@@ -211,14 +224,16 @@ sub LogError( $$;@ ) {
   die $fatal if $fatal;
 }
 
+*LogError = \&log_error;
+
 
 ###############################################################################
 
 
-=item my $stderr_logger = Tie( [$severity] );
+=item my $stderr_logger = tie( [SEVERITY] );
 
 Tie the STDERR handle to the Log::ErrLogger module, so that any output to
-STDERR will call LogError( $severity, output ).
+STDERR will call log_error( $severity, output ).
 
 If $severity is not specified, it will default to INFORMATIONAL.
 
@@ -226,7 +241,7 @@ If $severity is not specified, it will default to INFORMATIONAL.
 
 my $stderr_handler;
 
-sub Tie( ;$ ) {
+sub tie( ;$ ) {
   my ($severity) = @_;
 
   $severity = &INFORMATIONAL unless defined($severity);
@@ -236,12 +251,14 @@ sub Tie( ;$ ) {
   # Copy off what STDERR was
   open(OLD_STDERR, ">&STDERR");
 
-  $handler->SetFileHandle(*OLD_STDERR);
+  $handler->set_file_handle(*OLD_STDERR);
 
   $stderr_handler = tie *STDERR, ref($handler), $severity;
 
   return $handler;
 }
+
+*Tie = \&tie;
 
 sub TIEHANDLE( $ ) {
   my ($class, $severity) = @_;
@@ -250,12 +267,12 @@ sub TIEHANDLE( $ ) {
 
 sub PRINT( $$ ) {
   my ($self, $message) = @_;
-  Log::ErrLogger::LogError( $$self, "%s", $message );
+  Log::ErrLogger::log_error( $$self, "%s", $message );
 }
 
 sub PRINTF( $$;@ ) {
   my ($self, $format, @args) = @_;
-  Log::ErrLogger::LogError( $$self, $format, @args );
+  Log::ErrLogger::log_error( $$self, $format, @args );
 }
 
 
@@ -268,14 +285,17 @@ sub PRINTF( $$;@ ) {
 
 =over 4
 
-=item my $sensitivity = $logger->Sensitivity;
+=item my $sensitivity = $logger->sensitivity;
 
 Returns the sensitivty of an error logger object.  Objects respond to
-events that are at least as severe as their sensitivity.
+events that are at least as severe as their sensitivity.  There are
+two special sensitivities.  Objects with a sensitivity of NONE do not
+respond to any events.  Objects with a sensitivity of ALL respond
+to all events.
 
 =cut
 
-sub Sensitivity( $ ) {
+sub sensitivity( $ ) {
 
   my ($self) = @_;
 
@@ -286,7 +306,7 @@ sub Sensitivity( $ ) {
 ###############################################################################
 
 
-=item my $old_sensitivity = $logger->Sensitivity( $new_sensitivity );
+=item my $old_sensitivity = $logger->sensitivity( SENSITIVITY );
 
 Sets the sensitivty of an error logger object.  Objects respond to events
 that are at least as severe as their sensitivity.
@@ -295,7 +315,7 @@ Returns what the sensitivity of the object used to be.
 
 =cut
 
-sub SetSensitivity( $$ ) {
+sub set_sensitivity( $$ ) {
 
   my ($self, $sensitivity) = @_;
 
@@ -309,14 +329,14 @@ sub SetSensitivity( $$ ) {
 
 ###############################################################################
 
-=item my $fh = $logger->FileHandle;
+=item my $fh = $logger->file_handle;
 
 Returns the IO::Handle associated with the error logger object.  Not all
 error loggers will have a file handle, but most will.
 
 =cut
 
-sub FileHandle( $ ) {
+sub file_handle( $ ) {
   my ($self) = @_;
 
   return $self->{FILEHANDLE};
@@ -325,7 +345,7 @@ sub FileHandle( $ ) {
 
 ###############################################################################
 
-=item $logger->SetFileHandle( $handle );
+=item $logger->set_file_handle( HANDLE );
 
 Associates the error logger object with the given (opened) IO::Handle, and
 closes the old file handle that used to be associated with the object (if
@@ -336,11 +356,11 @@ error loggers.
 
 =cut
 
-sub SetFileHandle( $$ ) {
+sub set_file_handle( $$ ) {
   my ($self, $handle) = @_;
 
-  if (defined($self->FileHandle)) {
-	$self->FileHandle->close;
+  if (defined($self->file_handle)) {
+	$self->file_handle->close;
   }
 
   $self->{FILEHANDLE} = $handle;
@@ -352,7 +372,7 @@ sub SetFileHandle( $$ ) {
 
 =item $logger->close;
 
-Decommission the error logging object.  L<LogError> will no longer invoke
+Decommission the error logging object.  L<log_error> will no longer invoke
 this object.
 
 Note that this does NOT close the associated file handle.  However, if the
@@ -373,9 +393,9 @@ sub close( $ ) {
 
 ###############################################################################
 
-=item $logger->Log( $message, $severity);
+=item $logger->log( SEVERITY, MESSAGE );
 
-This is the method called by L<LogError>, above.  It prints
+This is the method called by L<log_error>, above.  It prints
 
 <time>: <message>
 
@@ -393,19 +413,19 @@ where <spaces> is the number of spaces needed to make all the colons line up.
 
 =cut
 
-sub Log( $$$ ) {
-  my ($self, $message, $severity) = @_;
+sub log( $$$ ) {
+  my ($self, $severity, $message) = @_;
 
-  if (defined($self->FileHandle)) {
+  if (defined($self->file_handle)) {
 	my $time = scalar(localtime);
-	print { $self->FileHandle } "$time: $message";
+	print { $self->file_handle } "$time: $message";
 	if (defined($self->{TRACE}) && $self->{TRACE} >= $severity) {
 	  # Show context
 	  my $i=1;
 	  my ($package, $filename, $line, $subroutine) = caller($i);
 
 	  while(defined($subroutine)) {
-		printf { $self->FileHandle } "%s: From %s, at %s:%s\n", " "x length($time), $subroutine, $filename, $line
+		printf { $self->file_handle } "%s: From %s, at %s:%s\n", " "x length($time), $subroutine, $filename, $line
 		  if ($filename ne __FILE__ && $subroutine !~ /^Log::ErrLogger/);
 		($package, $filename, $line, $subroutine) = caller(++$i);
 	  }
@@ -427,7 +447,7 @@ The following erorr logging classes are provided by the module:
 
 =item my $logger = new Log::ErrLogger( [parameter-hash] );
 
-Creates a new error logging object that uses the default L<Log>
+Creates a new error logging object that uses the default L<log>
 given above.  The parameters that are understood are
 
 =over 4
@@ -451,8 +471,8 @@ sub new( $;% ) {
 
   my $self = bless { %options }, $class;
 
-  if (!defined( $self->Sensitivity )) {
-	$self->SetSensitivity( $^P ? &DEBUGGING : &INFORMATIONAL );
+  if (!defined( $self->sensitivity )) {
+	$self->set_sensitivity( $^P ? &DEBUGGING : &INFORMATIONAL );
   }
 
   push(@LogMethods, $self);
@@ -474,7 +494,7 @@ takes
 =item FILE
 
 Name of the file that in which to log events.  Defaults to /tmp/<program-base-name>.<pid>.err.
-See the L<SetFileName> method, below, for details.
+See the L<set_file> method, below, for details.
 
 =back
 
@@ -493,8 +513,8 @@ use IO::File;
 
 # Prototypes don't do much for methods, but they make the code more readable.
 sub new( $;% );
-sub FileName( $ );
-sub SetFile( $$ );
+sub filename( $ );
+sub set_file( $$ );
 
 
 sub new( $;% ) {
@@ -506,7 +526,7 @@ sub new( $;% ) {
 
   my $self = Log::ErrLogger::new( $class, %options );
 
-  $self->SetFile( $self->FileName );
+  $self->set_file( $self->filename );
 
   return $self;
 }
@@ -520,13 +540,13 @@ Log::ErrLogger::File objects also provides the following methods:
 
 =over 4
 
-=item my $filename = $filelogger->FileName();
+=item my $filename = $filelogger->filename();
 
 Returns the name of the file to which events are logger.
 
 =cut
 
-sub FileName( $ ) {
+sub filename( $ ) {
   my ($self) = @_;
 
   return $self->{FILE};
@@ -536,7 +556,7 @@ sub FileName( $ ) {
 ###############################################################################
 
 
-=item my $old_filename = $filelogger->SetFile( $new_filename)
+=item my $old_filename = $filelogger->set_file( $new_filename [, mode [, perms]])
 
 Opens the given file for output and sets its FILEHANDLE to that file.  An ERROR
 event is generated if the file could not be opened.
@@ -552,27 +572,27 @@ Returns the old filename that errors used to be logged to.
 
 =cut
 
-sub SetFile( $$ ) {
+sub set_file( $$ ) {
   my ($self, $file) = @_;
 
-  my $oldfile = $self->FileName;
+  my $oldfile = $self->filename;
 
   # Try to create a backup file
   if ( -f $file ) {
 	my $backup = $file . ".bak";
 	!-f $backup || unlink($backup) ||
-	  Log::ErrLogger::LogError( &Log::ErrLogger::WARNING, "Could not remove old backup file %s: %s", $backup, $!);
+	  Log::ErrLogger::log_error( &Log::ErrLogger::WARNING, "Could not remove old backup file %s: %s", $backup, $!);
 	rename( $file, $backup) ||
-	  Log::ErrLogger::LogError( &Log::ErrLogger::WARNING, "Could not create backup file %s: %s", $backup, $!);
+	  Log::ErrLogger::log_error( &Log::ErrLogger::WARNING, "Could not create backup file %s: %s", $backup, $!);
   }
 
   $self->{FILE} = $file;
-  $self->SetFileHandle(new IO::File ">$file");
+  $self->set_file_handle(new IO::File ">$file");
 
-  if (defined($self->FileHandle)) {
-	$self->FileHandle->autoflush(1);
+  if (defined($self->file_handle)) {
+	$self->file_handle->autoflush(1);
   } else {
-	Log::ErrLogger::LogError( &Log::ErrLogger::ERROR, "Could not open file %s: %s", $file, $! );
+	Log::ErrLogger::log_error( &Log::ErrLogger::ERROR, "Could not open file %s: %s", $file, $! );
   }
 
   return $oldfile;
@@ -615,7 +635,7 @@ use Mail::Mailer;
 
 # Prototypes don't do much for methods, but they make the code more readable.
 sub new( $;% );
-sub Log( $$$ );
+sub log( $$$ );
 
 
 
@@ -632,15 +652,15 @@ sub new( $;% ) {
 # If this is never called, mail is never sent.               #
 ##############################################################
 
-sub Log( $$$ ) {
-  my ($self, $message, $severity) = @_;
+sub log( $$$ ) {
+  my ($self, $severity, $message) = @_;
 
-  if (!defined($self->FileHandle)) {
-	$self->SetFileHandle( new Mail::Mailer 'smtp', Server => "127.0.0.1" );
-	$self->FileHandle->open( $self->{HEADERS} );
+  if (!defined($self->file_handle)) {
+	$self->set_file_handle( new Mail::Mailer 'smtp', Server => "127.0.0.1" );
+	$self->file_handle->open( $self->{HEADERS} );
   }
 
-  $self->SUPER::Log($message);
+  $self->SUPER::log($severity, $message);
 }
 
 
@@ -661,7 +681,7 @@ subroutine will receive two parameters -- the event message and the
 error severity.  This parameter MUST be supplied to the constructor.
 
 Note that, within this subroutine, STDERR is what you would want it to
-be, even if the program has used Tie to capture STDERR.  Thus, the
+be, even if the program has used tie to capture STDERR.  Thus, the
 subroutine does not have to worry that output to STDERR will cause
 infinite recursion.
 
@@ -678,7 +698,7 @@ $VERSION = $Log::ErrLogger::VERSION;
 
 # Prototypes don't do much for methods, but they make the code more readable.
 sub new( $;% );
-sub Log( $$$ );
+sub log( $$$ );
 
 
 
@@ -704,8 +724,8 @@ sub new( $;% ) {
 # Log an error by calling a user specified subroutine. #
 ########################################################
 
-sub Log( $$$ ) {
-  my ($self, $message, $severity) = @_;
+sub log( $$$ ) {
+  my ($self, $severity, $message) = @_;
 
   # Put back the old STDERR, if necessary
   if ($stderr_handler) {
@@ -728,5 +748,3 @@ sub Log( $$$ ) {
 
 
 1;
-__END__
-
